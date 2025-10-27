@@ -1145,6 +1145,7 @@
           ];
           this.keyPressedHats = {};
           this.clickFunctions = [];
+          this.backdropChangeFunctions = {};
           this.runscript = false;
           this.flagHats = [];
           this.rsprite = new window.GRender.Sprite(32, 32, 32, 32, 32, 32);
@@ -2100,6 +2101,17 @@
         }
         addClickFunction(funct) {
           this.clickFunctions.push(funct);
+        }
+        addBackdropChangeFunction(backdrop,func) {
+          if (!this.backdropChangeFunctions[backdrop]) {
+            this.backdropChangeFunctions[backdrop] = [];
+          }
+          this.backdropChangeFunctions[backdrop].push(func);
+        }
+        triggerBackdropChangeFunctions(backdrop) {
+          if (this.backdropChangeFunctions[backdrop]) {
+            this.backdropChangeFunctions[backdrop].forEach((func) => func());
+          }
         }
         startClickHats() {
           for (var funct of this.clickFunctions) {
@@ -4267,6 +4279,27 @@
                   generatedCode += "\n});";
                   return;
                 }
+                if (b.opcode == "event_whenbackdropswitchesto") {
+                  blockFromStackCounter = 0;
+                  messageHatCounter += 1; //Lazily just use the hat counter that was for messages.
+                  var id = messageHatCounter;
+                  var threadEncodedString = JSON.stringify(
+                    "_thread_backdropchange_" + id
+                  );
+                  generatedCode +=
+                    "\n" + "addBackdropChangeFunction("+JSON.stringify(getFirstStringInArray(b.fields.BACKDROP))+",async function (){\n";
+                  generatedCode +=
+                    "\n" +
+                    "const sinfo = makeScriptInfo();addMessageThread(" +
+                    threadEncodedString +
+                    ",sinfo);";
+                  generatedCode += "\n" + "try{";
+                  readBlock(s.blocks2[b.next]);
+                  generatedCode += "\n" + "}catch(e){doErrorHandler(e);}";
+                  generatedCode += "\n" + "removeScriptInfo(sinfo);";
+                  generatedCode += "\n});";
+                  return;
+                }
                 if (b.opcode == "event_whenthisspriteclicked") {
                   blockFromStackCounter = 0;
                   messageHatCounter += 1; //Lazily just use the hat counter that was for messages.
@@ -4852,7 +4885,8 @@
               bl.opcode == "control_start_as_clone" ||
               bl.opcode == "event_whenbroadcastreceived" ||
               bl.opcode == "event_whenthisspriteclicked" ||
-              bl.opcode == "event_whenkeypressed"
+              bl.opcode == "event_whenkeypressed" ||
+              bl.opcode == "event_whenbackdropswitchesto"
             ) {
               readBlock(bl);
             }
@@ -5472,6 +5506,21 @@
       messageList: [],
       scratchMouseObject: scratchMouseObject,
       pixiPenSprite: new PIXI.Sprite(PIXI.Texture.EMPTY),
+      _lastStageCostumeNumber: null,
+      triggerWhenBackdropChangeFunctions: function () {
+        var stage = window.JSIfy.getStage();
+        if (!stage) {
+          return;
+        }
+        if (window.JSIfy._lastStageCostumeNumber !== stage.costumeNumber) {
+          window.JSIfy._lastStageCostumeNumber = stage.costumeNumber;
+          var stageCostumeName = window.JSIfy.costume.name;
+          var allSprites = window.JSIfy.getAllSpritesSorted();
+          allSprites.forEach((sprite) => {
+            sprite.triggerBackdropChangeFunctions(stageCostumeName);
+          });
+        }
+      }
     };
     var _lastMouseDownState = false;
     window.JSIfy.frameRate = 35;
